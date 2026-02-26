@@ -3,12 +3,18 @@ import SwiftUI
 struct ContentView: View {
     @Environment(MIDIManager.self) private var midi
     @Environment(KeyboardTransform.self) private var keyboardTransform
+    @Environment(AlignmentManager.self) private var alignment
     @State private var isImmersiveSpaceOpen = false
     @Environment(\.openImmersiveSpace) private var openImmersiveSpace
     @Environment(\.dismissImmersiveSpace) private var dismissImmersiveSpace
 
+    private let cNotes: [(note: UInt8, name: String)] = [
+        (24, "C1"), (36, "C2"), (48, "C3"), (60, "C4"),
+        (72, "C5"), (84, "C6"), (96, "C7"), (108, "C8")
+    ]
+
     var body: some View {
-        @Bindable var kt = keyboardTransform
+        @Bindable var am = alignment
 
         TabView {
             // Connection tab
@@ -98,6 +104,7 @@ struct ContentView: View {
                 Button(isImmersiveSpaceOpen ? "Close AR View" : "Open AR View") {
                     Task {
                         if isImmersiveSpaceOpen {
+                            alignment.stopAlignment()
                             await dismissImmersiveSpace()
                             isImmersiveSpaceOpen = false
                         } else {
@@ -110,34 +117,51 @@ struct ContentView: View {
 
                 Divider()
 
-                VStack(spacing: 12) {
-                    HStack {
-                        Text("Left / Right").frame(width: 100, alignment: .leading)
-                        Slider(value: $kt.x, in: -2...2)
-                        Text(String(format: "%.2f m", kt.x)).frame(width: 64, alignment: .trailing)
+                // Note selectors — configure before or during alignment
+                HStack(spacing: 12) {
+                    Text("Left pinch:").frame(width: 90, alignment: .leading)
+                    Picker("", selection: $am.leftNote) {
+                        ForEach(cNotes, id: \.note) { Text($0.name).tag($0.note) }
                     }
-                    HStack {
-                        Text("Height").frame(width: 100, alignment: .leading)
-                        Slider(value: $kt.y, in: -2...2)
-                        Text(String(format: "%.2f m", kt.y)).frame(width: 64, alignment: .trailing)
+                    .pickerStyle(.menu)
+                    .frame(width: 80)
+                }
+                HStack(spacing: 12) {
+                    Text("Right pinch:").frame(width: 90, alignment: .leading)
+                    Picker("", selection: $am.rightNote) {
+                        ForEach(cNotes, id: \.note) { Text($0.name).tag($0.note) }
                     }
-                    HStack {
-                        Text("Distance").frame(width: 100, alignment: .leading)
-                        Slider(value: $kt.z, in: -3...0)
-                        Text(String(format: "%.2f m", kt.z)).frame(width: 64, alignment: .trailing)
-                    }
-                    HStack {
-                        Text("Rotation").frame(width: 100, alignment: .leading)
-                        Slider(value: $kt.yaw, in: -180...180)
-                        Text(String(format: "%.0f°", kt.yaw)).frame(width: 64, alignment: .trailing)
-                    }
-                    HStack {
-                        Text("Scale").frame(width: 100, alignment: .leading)
-                        Slider(value: $kt.scale, in: 0.5...2.0)
-                        Text(String(format: "%.2f×", kt.scale)).frame(width: 64, alignment: .trailing)
+                    .pickerStyle(.menu)
+                    .frame(width: 80)
+                }
+
+                Divider()
+
+                // Align / Cancel button
+                if alignment.isAligning {
+                    Button("Cancel") { alignment.stopAlignment() }
+                } else {
+                    Button("Align Keyboard") { alignment.startAlignment(kt: keyboardTransform) }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(!isImmersiveSpaceOpen)
+                }
+
+                // Status
+                Group {
+                    if alignment.isAligning {
+                        if let seconds = alignment.countdown {
+                            Text("Locking in \(seconds)…")
+                                .foregroundStyle(.orange)
+                        } else if alignment.leftPinchPos != nil && alignment.rightPinchPos != nil {
+                            Text("Hold still…")
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Text("Pinch both index fingers at the reference keys.")
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
-                .disabled(!isImmersiveSpaceOpen)
+                .font(.callout)
 
                 Spacer()
             }
@@ -151,4 +175,5 @@ struct ContentView: View {
     ContentView()
         .environment(MIDIManager())
         .environment(KeyboardTransform())
+        .environment(AlignmentManager())
 }

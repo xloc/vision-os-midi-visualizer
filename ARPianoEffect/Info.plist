@@ -7,6 +7,8 @@
 		<key>UIApplicationSupportsMultipleScenes</key>
 		<true/>
 	</dict>
+	<key>NSHandsTrackingUsageDescription</key>
+	<string>This app tracks your index fingers to align the virtual keyboard with your physical piano.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>This app uses Bluetooth to connect to MIDI devices.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>

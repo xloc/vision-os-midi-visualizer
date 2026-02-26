@@ -35,14 +35,24 @@ Observe `MIDIManager.activeNotes`. On change, diff the previous set and update a
 
 ### 4. Alignment Controls
 
-A new **AR** tab in `ContentView` with:
+A new **AR** tab in `ContentView` with a real-time pinch-based alignment flow:
 
-- **Open / Close AR View** button (toggles the immersive space)
-- **Position** — X (left/right), Y (height), Z (depth) sliders, range ±2m
-- **Y Rotation** — slider, –180° to +180°
-- **Scale** — slider, 0.5× to 2×
+1. User opens the immersive space and selects which note each hand will reference (default C2 / C4)
+2. User taps **Align Keyboard** to enter alignment mode — keyboard turns semi-transparent (45% opacity)
+3. User pinches thumb + index finger together on both hands and places them at the two reference keys
+4. The keyboard mesh moves in real time to match the pinch positions
+5. When both hands hold still for 5 seconds, a countdown ("Locking in 5…4…3…") is shown in the panel; the keyboard locks in at full opacity
+6. Any movement resets the countdown; **Cancel** aborts
 
-These bind to the root keyboard entity's transform via a shared `@Observable` `KeyboardTransform` state object.
+During alignment, colored spheres mark each pinch position in AR (blue = left hand, orange = right hand). Alignment runs automatically on lock-in with no extra tap needed.
+
+`AlignmentManager` owns the ARKit `HandTrackingProvider` session (started from `PianoKeyboardView.task`) and writes x / y / z / yaw / scale into `KeyboardTransform`.
+
+**Alignment math** (given two live pinch world positions and their known x-positions in keyboard local space):
+- **Scale**: `worldDist / virtualDist` (distances projected onto the xz plane)
+- **Yaw**: `atan2(-dir.z, dir.x)` where `dir` is the unit xz direction from left pinch to right pinch
+- **Reference point**: the **front-top-center edge** of each key (x-center, y = +height/2, z = +depth/2 from geometric center) — the point the fingertip naturally rests on
+- **Translation**: `kt.x/y/z` computed so the left pinch maps to the left key's front-top-center in world space
 
 ## Definition of Done
 
@@ -51,7 +61,10 @@ These bind to the root keyboard entity's transform via a shared `@Observable` `K
 - [ ] White and black keys have correct relative proportions and positions
 - [ ] Playing a note on the physical piano lights up the corresponding key in AR
 - [ ] Releasing the note restores the key's original color
-- [ ] Sliders reposition / rotate / scale the keyboard in real time
+- [ ] Pinch both hands at two reference keys → keyboard moves in real time to match
+- [ ] Keyboard is semi-transparent during alignment; blue/orange spheres show pinch positions
+- [ ] 5-second stability countdown locks the alignment automatically
+- [ ] Keyboard correctly positions, rotates, and scales to match the physical piano after lock-in
 
 ## Not In This Slice
 
