@@ -30,6 +30,7 @@ final class AlignmentManager {
     private var lastRightPos: SIMD3<Float>?
     private let movementThreshold: Float = 0.01     // 1 cm
     private let stableSeconds: Double = 5.0
+    private var countdownTask: Task<Void, Never>?
 
     // MARK: - Public actions
 
@@ -46,6 +47,7 @@ final class AlignmentManager {
     }
 
     func stopAlignment() {
+        countdownTask?.cancel()
         isAligning = false
         countdown = nil
         leftPinchPos = nil
@@ -145,8 +147,9 @@ final class AlignmentManager {
     // MARK: - Countdown loop
 
     private func startCountdownLoop() {
-        Task { @MainActor [weak self] in
-            while let self, self.isAligning {
+        countdownTask?.cancel()
+        countdownTask = Task { @MainActor [weak self] in
+            while let self, self.isAligning, !Task.isCancelled {
                 self.tickCountdown()
                 try? await Task.sleep(for: .milliseconds(100))
             }

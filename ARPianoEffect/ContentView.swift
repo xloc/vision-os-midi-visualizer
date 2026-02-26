@@ -95,6 +95,9 @@ struct ContentView: View {
                     Text(midi.activeNotes.sorted().map { MIDIManager.noteName(for: $0) }.joined(separator: " "))
                         .font(.system(size: 72, weight: .bold, design: .monospaced))
                 }
+                Text("MIDI delay: \(String(format: "%.1f", midi.lastMidiDelay)) ms")
+                    .font(.system(size: 14, design: .monospaced))
+                    .foregroundStyle(.secondary)
             }
             .padding(40)
             .tabItem { Label("Notes", systemImage: "pianokeys") }

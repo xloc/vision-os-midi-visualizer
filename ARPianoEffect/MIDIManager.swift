@@ -12,6 +12,7 @@ final class MIDIManager: NSObject {
     var bluetoothStatus = "Initializing..."
     var connectionStatus = ""
     var debugLog: [String] = []
+    var lastMidiDelay: Double = 0   // ms from BLE callback to main actor
 
     private var centralManager: CBCentralManager!
     private var midiCharacteristic: CBCharacteristic?
@@ -220,7 +221,9 @@ extension MIDIManager: CBPeripheralDelegate {
     nonisolated func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
         guard error == nil, let data = characteristic.value else { return }
         let bytes = [UInt8](data)
+        let received = Date()
         Task { @MainActor in
+            self.lastMidiDelay = Date().timeIntervalSince(received) * 1000
             self.parseBLEMIDI(bytes)
         }
     }
