@@ -22,3 +22,11 @@ Follow established best practices when they make the code or project simpler. Ig
 - **TypeScript types at declaration site.** Define types at function signatures, API boundaries, and state initialization. Let TypeScript infer derived values.
 
 See [design/00-code-style-examples.md](design/00-code-style-examples.md) for examples.
+
+## Build Verification
+
+After modifying Swift code, verify the build succeeds:
+
+```bash
+xcodebuild -project ARPianoEffect.xcodeproj -scheme ARPianoEffect -destination 'generic/platform=visionOS' build
+```

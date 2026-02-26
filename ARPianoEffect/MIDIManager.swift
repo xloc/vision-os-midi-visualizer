@@ -59,42 +59,30 @@ final class MIDIManager: NSObject {
     func disconnect() {
         if let peripheral = connectedPeripheral {
             centralManager.cancelPeripheralConnection(peripheral)
-            connectedPeripheral = nil
-            midiCharacteristic = nil
-            activeNotes = []
-            connectionStatus = ""
+            resetConnectionState()
             log("Disconnected")
         }
     }
 
-    private func parseBLEMIDI(_ data: Data) {
-        // Your device format: [0x80] [0x80] [status] [note] [velocity]
-        // - Byte 0: Header (0x80)
-        // - Byte 1: Timestamp (0x80)
-        // - Byte 2: MIDI status (0x90 = Note On, 0x80 = Note Off)
-        // - Byte 3: Note number
-        // - Byte 4: Velocity
+    private func resetConnectionState() {
+        connectedPeripheral = nil
+        midiCharacteristic = nil
+        activeNotes = []
+        connectionStatus = ""
+    }
 
-        guard data.count >= 5 else {
-            log("Packet too short: \(data.count) bytes")
-            return
-        }
+    private func parseBLEMIDI(_ bytes: [UInt8]) {
+        // BLE MIDI format: [header] [timestamp] [status] [note] [velocity]
+        guard bytes.count >= 5 else { return }
 
-        let bytes = [UInt8](data)
-
-        // Skip header (byte 0) and timestamp (byte 1)
-        let status = bytes[2]
+        let status = bytes[2] & 0xF0
         let note = bytes[3]
         let velocity = bytes[4]
 
-        let statusType = status & 0xF0
-
-        if statusType == 0x90 && velocity > 0 {
-            // Note On
+        if status == 0x90 && velocity > 0 {
             activeNotes.insert(note)
             log("Note ON: \(Self.noteName(for: note)) vel=\(velocity)")
-        } else if statusType == 0x80 || (statusType == 0x90 && velocity == 0) {
-            // Note Off
+        } else if status == 0x80 || (status == 0x90 && velocity == 0) {
             activeNotes.remove(note)
             log("Note OFF: \(Self.noteName(for: note))")
         }
@@ -159,10 +147,7 @@ extension MIDIManager: CBCentralManagerDelegate {
     nonisolated func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
         Task { @MainActor in
             self.log("Disconnected: \(error?.localizedDescription ?? "clean")")
-            self.connectedPeripheral = nil
-            self.midiCharacteristic = nil
-            self.activeNotes = []
-            self.connectionStatus = ""
+            self.resetConnectionState()
         }
     }
 }
@@ -233,26 +218,10 @@ extension MIDIManager: CBPeripheralDelegate {
     }
 
     nonisolated func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
-        if let error = error {
-            Task { @MainActor in
-                self.log("Read error: \(error.localizedDescription)")
-            }
-            return
-        }
-
-        guard let data = characteristic.value else {
-            Task { @MainActor in
-                self.log("No data in characteristic")
-            }
-            return
-        }
-
+        guard error == nil, let data = characteristic.value else { return }
         let bytes = [UInt8](data)
-        let hex = bytes.map { String(format: "%02X", $0) }.joined(separator: " ")
-
         Task { @MainActor in
-            self.log("RAW [\(data.count)]: \(hex)")
-            self.parseBLEMIDI(data)
+            self.parseBLEMIDI(bytes)
         }
     }
 }
