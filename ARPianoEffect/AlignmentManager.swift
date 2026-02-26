@@ -6,6 +6,12 @@ import Observation
 @MainActor
 final class AlignmentManager {
 
+    // MARK: - Keyboard geometry (single source of truth)
+
+    static let blackSet: Set<Int> = [1, 3, 6, 8, 10]
+    static let whiteKeySize = SIMD3<Float>(0.023, 0.010, 0.150)
+    static let blackKeySize = SIMD3<Float>(0.013, 0.015, 0.095)
+
     // MARK: - Observable state
 
     var isAligning = false
@@ -169,8 +175,8 @@ final class AlignmentManager {
     // MARK: - Alignment math
 
     private func applyAlignment(lp: SIMD3<Float>, rp: SIMD3<Float>, to kt: KeyboardTransform) {
-        let lx = keyXCenter(for: leftNote)
-        let rx = keyXCenter(for: rightNote)
+        let lx = Self.keyXCenter(for: leftNote)
+        let rx = Self.keyXCenter(for: rightNote)
         let virtualDist = rx - lx
 
         let worldVec = SIMD3<Float>(rp.x - lp.x, 0, rp.z - lp.z)
@@ -185,26 +191,25 @@ final class AlignmentManager {
         let angle = kt.yaw * .pi / 180
         let rotation = simd_quatf(angle: angle, axis: SIMD3(0, 1, 0))
         // Reference point is the front-top-center edge of the key, not the geometric center
-        let yAnchor: Float = 0.005   // white key height / 2
-        let zAnchor: Float = 0.075   // white key depth  / 2
+        let yAnchor = Self.whiteKeySize.y / 2
+        let zAnchor = Self.whiteKeySize.z / 2
         let rotatedAnchor = rotation.act(SIMD3<Float>(kt.scale * lx, kt.scale * yAnchor, kt.scale * zAnchor))
         kt.x = lp.x - rotatedAnchor.x
         kt.y = (lp.y + rp.y) / 2 - kt.scale * yAnchor
         kt.z = lp.z - rotatedAnchor.z
     }
 
-    private func keyXCenter(for note: UInt8) -> Float {
-        let whiteWidth: Float = 0.023
-        let centerOffset = Float(52) * whiteWidth / 2
-        let blackSet: Set<Int> = [1, 3, 6, 8, 10]
+    static func keyXCenter(for note: UInt8) -> Float {
+        let wW = whiteKeySize.x
+        let centerOffset = Float(52) * wW / 2
         var whiteIndex = 0
         for n in 21...108 {
             let isBlack = blackSet.contains(n % 12)
             let xCenter: Float
             if isBlack {
-                xCenter = Float(whiteIndex) * whiteWidth
+                xCenter = Float(whiteIndex) * wW
             } else {
-                xCenter = (Float(whiteIndex) + 0.5) * whiteWidth
+                xCenter = (Float(whiteIndex) + 0.5) * wW
                 whiteIndex += 1
             }
             if n == Int(note) { return xCenter - centerOffset }
