@@ -9,10 +9,11 @@ A structured approach to transforming ideas into working software with code agen
 ```
 project/
 ├── design/
-│   ├── 00-WORKFLOW.md           # This process doc (copy to new projects)
-│   ├── 00-build-contract.md     # Project requirements (what to build)
-│   ├── 01-first-feature.md      # First vertical slice
-│   └── 02-*.md                  # Additional slices
+│   ├── 00-WORKFLOW.md                  # This process doc (copy to new projects)
+│   ├── 00-build-contract.md            # Project requirements (what to build)
+│   ├── 01-first-feature.md             # First vertical slice
+│   ├── 02-*.md                         # Additional slices
+│   └── NN-implementation-details.md    # Implementation notes for slice NN (optional)
 └── src/
     └── ...
 ```
@@ -82,6 +83,9 @@ Once this slice works, you now have:
 - A running integration testbed
 - Real constraints
 - A place to plug in "the real version"
+
+Write the slice document as a spec — goal, user-facing behaviour, definition of done — not an implementation guide; if technical decisions are worth recording, put them in a companion `NN-implementation-details.md`.
+
 
 ### 3. Make the agent produce tests + code, not just code
 

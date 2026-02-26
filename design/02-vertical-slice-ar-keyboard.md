@@ -71,4 +71,4 @@ During alignment, colored spheres mark each pinch position in AR (blue = left ha
 - Drag gestures directly on the keyboard entity in AR
 - Note name labels on keys
 - Visual effects (glow, particles, animations)
-- Persistence of alignment settings across launches
+- Persistence of alignment settings across launches → see [03-alignment-persistence.md](03-alignment-persistence.md)
