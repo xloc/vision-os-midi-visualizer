@@ -32,6 +32,8 @@ final class AlignmentManager {
     private let stableSeconds: Double = 5.0
     private var countdownTask: Task<Void, Never>?
 
+    private var worldProvider: WorldTrackingProvider?
+
     // MARK: - Public actions
 
     func startAlignment(kt: KeyboardTransform) {
@@ -58,19 +60,65 @@ final class AlignmentManager {
 
     // MARK: - ARKit session (called once from PianoKeyboardView .task)
 
-    func startTracking() async {
+    func startTracking(kt: KeyboardTransform) async {
         guard HandTrackingProvider.isSupported else { return }
+        storedKT = kt
+        worldProvider = WorldTrackingProvider.isSupported ? WorldTrackingProvider() : nil
+
+        let handProvider = HandTrackingProvider()
+        var providers: [any DataProvider] = [handProvider]
+        if let wp = worldProvider { providers.append(wp) }
+
         let session = ARKitSession()
-        let provider = HandTrackingProvider()
         do {
-            try await session.run([provider])
+            try await session.run(providers)
         } catch {
-            print("Hand tracking failed: \(error)")
+            print("ARKit session failed: \(error)")
             return
         }
-        for await update in provider.anchorUpdates {
+
+        Task { @MainActor [weak self] in
+            guard let self, let wp = self.worldProvider else { return }
+            for await update in wp.anchorUpdates {
+                self.processWorldAnchor(update)
+            }
+        }
+
+        for await update in handProvider.anchorUpdates {
             guard isAligning, let skeleton = update.anchor.handSkeleton else { continue }
             processHand(update.anchor, skeleton: skeleton)
+        }
+    }
+
+    // MARK: - World anchor restoration
+
+    private func processWorldAnchor(_ update: AnchorUpdate<WorldAnchor>) {
+        guard !isAligning, update.event != .removed else { return }
+        guard let savedId = UserDefaults.standard.string(forKey: "kt.anchorId"),
+              update.anchor.id.uuidString == savedId,
+              let kt = storedKT else { return }
+        let t = update.anchor.originFromAnchorTransform
+        kt.x = t.columns.3.x
+        kt.y = t.columns.3.y
+        kt.z = t.columns.3.z
+        kt.yaw = atan2(-t.columns.0.z, t.columns.0.x) * 180 / .pi
+        let savedScale = UserDefaults.standard.float(forKey: "kt.scale")
+        if savedScale > 0 { kt.scale = savedScale }
+    }
+
+    // MARK: - World anchor persistence
+
+    private func saveWorldAnchor(for kt: KeyboardTransform) async {
+        let angle = kt.yaw * .pi / 180
+        var t = simd_float4x4(simd_quatf(angle: angle, axis: SIMD3<Float>(0, 1, 0)))
+        t.columns.3 = SIMD4<Float>(kt.x, kt.y, kt.z, 1)
+        let anchor = WorldAnchor(originFromAnchorTransform: t)
+        do {
+            try await worldProvider?.addAnchor(anchor)
+            UserDefaults.standard.set(anchor.id.uuidString, forKey: "kt.anchorId")
+            UserDefaults.standard.set(kt.scale, forKey: "kt.scale")
+        } catch {
+            print("Failed to save world anchor: \(error)")
         }
     }
 
@@ -165,6 +213,7 @@ final class AlignmentManager {
         if elapsed >= stableSeconds {
             if let kt = storedKT, let lp = leftPinchPos, let rp = rightPinchPos {
                 applyAlignment(lp: lp, rp: rp, to: kt)
+                Task { await self.saveWorldAnchor(for: kt) }
             }
             isAligning = false
             countdown = nil

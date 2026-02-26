@@ -27,7 +27,7 @@ struct PianoKeyboardView: View {
             updatePinchSpheres()
         }
         .task {
-            await alignment.startTracking()
+            await alignment.startTracking(kt: kt)
         }
     }
 
