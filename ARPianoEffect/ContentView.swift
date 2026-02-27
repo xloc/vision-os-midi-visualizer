@@ -15,6 +15,7 @@ struct ContentView: View {
 
     var body: some View {
         @Bindable var am = alignment
+        @Bindable var kt = keyboardTransform
 
         TabView {
             // Connection tab
@@ -117,6 +118,10 @@ struct ContentView: View {
                     }
                 }
                 .buttonStyle(.borderedProminent)
+
+                Divider()
+
+                Toggle("Show Keyboard", isOn: $kt.isKeyboardVisible)
 
                 Divider()
 
