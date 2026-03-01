@@ -9,8 +9,9 @@ struct PianoKeyboardView: View {
     // MARK: - Bar constants
 
     private static let barSpeed: Float = 0.15       // m/s (local units) — same for growing and floating
-    private static let barWidth: Float = 0.004      // 4 mm thin strip
+    private static let barWidth: Float = 0.006     // 4 mm thin strip
     private static let barDepth: Float = 0.006      // 6 mm slab
+    private static let barCornerRadius: Float = 0.002
     private static let worldCeilingY: Float = 2.5   // world-space Y where bars start shrinking from the top
 
     // MARK: - Data
@@ -21,8 +22,7 @@ struct PianoKeyboardView: View {
         let xCenter: Float
         let zOffset: Float
         let pressTime: Date
-        var releaseTime: Date?
-        var releaseBottomY: Float?
+        var releaseTime: Date?  // nil = key is still held
         var currentHeight: Float
     }
 
@@ -173,9 +173,9 @@ struct PianoKeyboardView: View {
         // Float released bars upward; shrink from top when hitting ceiling
         let ceilingLocalY = kt.scale > 0 ? (Self.worldCeilingY - kt.y) / kt.scale : Self.worldCeilingY
         keyData.floatingBars = keyData.floatingBars.compactMap { bar in
-            guard let releaseTime = bar.releaseTime, let releaseBottomY = bar.releaseBottomY else { return nil }
+            guard let releaseTime = bar.releaseTime else { return nil }
             let elapsed = Float(now.timeIntervalSince(releaseTime))
-            let bottomY = releaseBottomY + Self.barSpeed * elapsed
+            let bottomY = bar.keyTopY + Self.barSpeed * elapsed
             let top = min(bottomY + bar.currentHeight, ceilingLocalY)
             let actualHeight = top - bottomY
             if actualHeight <= 0 {
@@ -192,7 +192,6 @@ struct PianoKeyboardView: View {
         // If a bar is already active for this note (re-press), move it to floating
         if var existing = keyData.activeBars.removeValue(forKey: note) {
             existing.releaseTime = now
-            existing.releaseBottomY = existing.keyTopY
             keyData.floatingBars.append(existing)
         }
 
@@ -203,7 +202,7 @@ struct PianoKeyboardView: View {
         let zOffset: Float = isBlack ? -(wS.z - bS.z) / 2 : 0
         let keyTopY: Float = (isBlack ? wS.y / 2 + bS.y : wS.y / 2) + 0.01  // 1cm above key surface
 
-        let mesh = MeshResource.generateBox(size: SIMD3(Self.barWidth, 1, Self.barDepth), cornerRadius: 0.0015)
+        let mesh = MeshResource.generateBox(size: SIMD3(Self.barWidth, 1, Self.barDepth), cornerRadius: Self.barCornerRadius)
         var mat = PhysicallyBasedMaterial()
         mat.baseColor = .init(tint: .white)
         mat.emissiveColor = .init(color: .white)
@@ -228,7 +227,6 @@ struct PianoKeyboardView: View {
     private func releaseBar(for note: UInt8, at now: Date) {
         guard var bar = keyData.activeBars.removeValue(forKey: note) else { return }
         bar.releaseTime = now
-        bar.releaseBottomY = bar.keyTopY
         keyData.floatingBars.append(bar)
     }
 }
