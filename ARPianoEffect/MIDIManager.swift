@@ -8,6 +8,7 @@ final class MIDIManager: NSObject {
     var bleDevices: [CBPeripheral] = []
     var connectedPeripheral: CBPeripheral?
     var activeNotes: Set<UInt8> = []
+    var noteVelocities: [UInt8: UInt8] = [:]
     var isScanning = false
     var bluetoothStatus = "Initializing..."
     var connectionStatus = ""
@@ -82,9 +83,11 @@ final class MIDIManager: NSObject {
 
         if status == 0x90 && velocity > 0 {
             activeNotes.insert(note)
+            noteVelocities[note] = velocity
             log("Note ON: \(Self.noteName(for: note)) vel=\(velocity)")
         } else if status == 0x80 || (status == 0x90 && velocity == 0) {
             activeNotes.remove(note)
+            noteVelocities.removeValue(forKey: note)
             log("Note OFF: \(Self.noteName(for: note))")
         }
     }

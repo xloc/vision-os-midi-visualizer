@@ -14,6 +14,12 @@ struct PianoKeyboardView: View {
     private static let barCornerRadius: Float = 0.002
     private static let worldCeilingY: Float = 2.5   // world-space Y where bars start shrinking from the top
 
+    // MARK: - Throw constants
+
+    private static let throwSpeed: Float = 1.0
+    private static let throwGravity: Float = -2.5   // local-space m/s²
+    private static let throwLifetime: Float = 1.5
+
     // MARK: - Data
 
     private struct BarRecord {
@@ -26,6 +32,13 @@ struct PianoKeyboardView: View {
         var currentHeight: Float
     }
 
+    private struct ThrowRecord {
+        let entity: ModelEntity
+        let spawnPos: SIMD3<Float>
+        let velocity: SIMD3<Float>
+        let spawnTime: Date
+    }
+
     private final class KeyData {
         var keys: [UInt8: ModelEntity] = [:]
         var root: Entity?
@@ -33,6 +46,7 @@ struct PianoKeyboardView: View {
         var rightSphere: ModelEntity?
         var activeBars: [UInt8: BarRecord] = [:]
         var floatingBars: [BarRecord] = []
+        var activeThrows: [ThrowRecord] = []
         var previousNotes: Set<UInt8> = []
     }
     @State private var keyData = KeyData()
@@ -154,6 +168,8 @@ struct PianoKeyboardView: View {
 
         for note in pressed {
             spawnBar(for: note, root: root, at: now)
+            let vel = midi.noteVelocities[note] ?? 64
+            spawnThrow(for: note, velocity: vel, root: root, at: now)
         }
         for note in released {
             releaseBar(for: note, at: now)
@@ -185,6 +201,20 @@ struct PianoKeyboardView: View {
             bar.entity.scale.y = actualHeight
             bar.entity.position.y = bottomY + actualHeight / 2
             return bar
+        }
+
+        // Throw projectiles: fly up-forward with gravity
+        keyData.activeThrows = keyData.activeThrows.compactMap { record in
+            let t = Float(now.timeIntervalSince(record.spawnTime))
+            if t > Self.throwLifetime {
+                record.entity.removeFromParent()
+                return nil
+            }
+            let x = record.spawnPos.x + record.velocity.x * t
+            let y = record.spawnPos.y + record.velocity.y * t + 0.5 * Self.throwGravity * t * t
+            let z = record.spawnPos.z + record.velocity.z * t
+            record.entity.position = SIMD3(x, y, z)
+            return record
         }
     }
 
@@ -228,5 +258,47 @@ struct PianoKeyboardView: View {
         guard var bar = keyData.activeBars.removeValue(forKey: note) else { return }
         bar.releaseTime = now
         keyData.floatingBars.append(bar)
+    }
+
+    private func spawnThrow(for note: UInt8, velocity: UInt8, root: Entity, at now: Date) {
+        let speed = Self.throwSpeed * Float(velocity) / 64.0
+        let wS = AlignmentManager.whiteKeySize
+        let bS = AlignmentManager.blackKeySize
+        let isBlack = AlignmentManager.blackSet.contains(Int(note) % 12)
+        let xCenter = AlignmentManager.keyXCenter(for: note)
+        let zOffset: Float = isBlack ? -(wS.z - bS.z) / 2 : 0
+        let keyTopY: Float = isBlack ? wS.y / 2 + bS.y : wS.y / 2
+        let spawnPos = SIMD3<Float>(xCenter, keyTopY, zOffset)
+
+        let pitch = Float.random(in: .pi / 6 ... .pi / 2)  // 30°–90° above horizontal
+        let yaw   = Float.random(in: -.pi / 2 ... .pi / 2) // ±90° horizontal spread
+        let vx =  speed * cos(pitch) * sin(yaw)
+        let vy =  speed * sin(pitch)
+        let vz = -speed * cos(pitch) * cos(yaw)  // -Z = away from player
+
+        let noteName = MIDIManager.noteName(for: note)
+        let mesh = MeshResource.generateText(
+            noteName,
+            extrusionDepth: 0.003,
+            font: .systemFont(ofSize: 0.018, weight: .bold),
+            containerFrame: CGRect(x: -0.04, y: -0.01, width: 0.08, height: 0.025),
+            alignment: .center,
+            lineBreakMode: .byTruncatingTail
+        )
+        var mat = PhysicallyBasedMaterial()
+        mat.baseColor = .init(tint: .white)
+        mat.emissiveColor = .init(color: .white)
+        mat.emissiveIntensity = 5.0
+        let entity = ModelEntity(mesh: mesh, materials: [mat])
+        entity.name = "throw"
+        entity.position = spawnPos
+        root.addChild(entity)
+
+        keyData.activeThrows.append(ThrowRecord(
+            entity: entity,
+            spawnPos: spawnPos,
+            velocity: SIMD3(vx, vy, vz),
+            spawnTime: now
+        ))
     }
 }
