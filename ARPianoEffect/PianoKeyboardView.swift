@@ -22,6 +22,7 @@ struct PianoKeyboardView: View {
         let zOffset: Float
         let pressTime: Date
         var releaseTime: Date?
+        var releaseBottomY: Float?
         var currentHeight: Float
     }
 
@@ -39,22 +40,18 @@ struct PianoKeyboardView: View {
     // MARK: - Body
 
     var body: some View {
-        _ = midi.activeNotes
-        _ = (kt.x, kt.y, kt.z, kt.yaw, kt.scale, kt.isKeyboardVisible)
-        _ = (alignment.isAligning, alignment.leftPinchPos, alignment.rightPinchPos)
-
-        return RealityView { content in
-            buildKeyboard(content: content)
-        } update: { _ in
-            applyTransform()
-            updateColors()
-            updatePinchSpheres()
-        }
-        .task {
-            await alignment.startTracking(kt: kt)
-        }
-        .task {
-            await runBarAnimation()
+        TimelineView(.animation) { context in
+            RealityView { content in
+                buildKeyboard(content: content)
+            } update: { _ in
+                tickBars(now: context.date)
+                applyTransform()
+                updateColors()
+                updatePinchSpheres()
+            }
+            .task {
+                await alignment.startTracking(kt: kt)
+            }
         }
     }
 
@@ -143,24 +140,10 @@ struct PianoKeyboardView: View {
         }
     }
 
-    // MARK: - Bar animation loop
+    // MARK: - Bar animation (display-synchronized via TimelineView)
 
     @MainActor
-    private func runBarAnimation() async {
-        var lastTick = Date()
-        while !Task.isCancelled {
-            let now = Date()
-            let dt = Float(now.timeIntervalSince(lastTick))
-            lastTick = now
-
-            tickBars(now: now, dt: dt)
-
-            try? await Task.sleep(for: .milliseconds(16))
-        }
-    }
-
-    @MainActor
-    private func tickBars(now: Date, dt: Float) {
+    private func tickBars(now: Date) {
         guard let root = keyData.root else { return }
 
         // Detect note on/off
@@ -190,7 +173,9 @@ struct PianoKeyboardView: View {
         // Float released bars upward; shrink from top when hitting ceiling
         let ceilingLocalY = kt.scale > 0 ? (Self.worldCeilingY - kt.y) / kt.scale : Self.worldCeilingY
         keyData.floatingBars = keyData.floatingBars.compactMap { bar in
-            let bottomY = bar.entity.position.y - bar.entity.scale.y / 2 + Self.barSpeed * dt
+            guard let releaseTime = bar.releaseTime, let releaseBottomY = bar.releaseBottomY else { return nil }
+            let elapsed = Float(now.timeIntervalSince(releaseTime))
+            let bottomY = releaseBottomY + Self.barSpeed * elapsed
             let top = min(bottomY + bar.currentHeight, ceilingLocalY)
             let actualHeight = top - bottomY
             if actualHeight <= 0 {
@@ -205,7 +190,9 @@ struct PianoKeyboardView: View {
 
     private func spawnBar(for note: UInt8, root: Entity, at now: Date) {
         // If a bar is already active for this note (re-press), move it to floating
-        if let existing = keyData.activeBars.removeValue(forKey: note) {
+        if var existing = keyData.activeBars.removeValue(forKey: note) {
+            existing.releaseTime = now
+            existing.releaseBottomY = existing.keyTopY
             keyData.floatingBars.append(existing)
         }
 
@@ -241,6 +228,7 @@ struct PianoKeyboardView: View {
     private func releaseBar(for note: UInt8, at now: Date) {
         guard var bar = keyData.activeBars.removeValue(forKey: note) else { return }
         bar.releaseTime = now
+        bar.releaseBottomY = bar.keyTopY
         keyData.floatingBars.append(bar)
     }
 }
