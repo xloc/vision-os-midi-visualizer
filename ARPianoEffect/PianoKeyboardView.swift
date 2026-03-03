@@ -17,8 +17,7 @@ struct PianoKeyboardView: View {
     // MARK: - Throw constants
 
     private static let throwSpeed: Float = 1.0
-    private static let throwGravity: Float = -2.5   // local-space m/s²
-    private static let throwLifetime: Float = 1.5
+    private static let throwLifetime: Float = 3.0
 
     // MARK: - Data
 
@@ -34,14 +33,14 @@ struct PianoKeyboardView: View {
 
     private struct ThrowRecord {
         let entity: ModelEntity
-        let spawnPos: SIMD3<Float>
-        let velocity: SIMD3<Float>
         let spawnTime: Date
     }
 
     private final class KeyData {
         var keys: [UInt8: ModelEntity] = [:]
         var root: Entity?
+        var worldRoot: Entity?
+        var meshEntities: [UUID: ModelEntity] = [:]
         var leftSphere: ModelEntity?
         var rightSphere: ModelEntity?
         var activeBars: [UInt8: BarRecord] = [:]
@@ -59,6 +58,7 @@ struct PianoKeyboardView: View {
                 buildKeyboard(content: content)
             } update: { _ in
                 tickBars(now: context.date)
+                processMeshUpdates()
                 applyTransform()
                 updateColors()
                 updatePinchSpheres()
@@ -96,6 +96,10 @@ struct PianoKeyboardView: View {
 
         keyData.root = root
         content.add(root)
+
+        let worldRoot = Entity()
+        keyData.worldRoot = worldRoot
+        content.add(worldRoot)
 
         // Pinch position spheres: blue = left, orange = right
         let sphereMesh = MeshResource.generateSphere(radius: 0.015)
@@ -168,8 +172,10 @@ struct PianoKeyboardView: View {
 
         for note in pressed {
             spawnBar(for: note, root: root, at: now)
-            let vel = midi.noteVelocities[note] ?? 64
-            spawnThrow(for: note, velocity: vel, root: root, at: now)
+            if kt.throwEnabled {
+                let vel = midi.noteVelocities[note] ?? 64
+                spawnThrow(for: note, velocity: vel, root: root, at: now)
+            }
         }
         for note in released {
             releaseBar(for: note, at: now)
@@ -203,18 +209,11 @@ struct PianoKeyboardView: View {
             return bar
         }
 
-        // Throw projectiles: fly up-forward with gravity
-        keyData.activeThrows = keyData.activeThrows.compactMap { record in
-            let t = Float(now.timeIntervalSince(record.spawnTime))
-            if t > Self.throwLifetime {
-                record.entity.removeFromParent()
-                return nil
-            }
-            let x = record.spawnPos.x + record.velocity.x * t
-            let y = record.spawnPos.y + record.velocity.y * t + 0.5 * Self.throwGravity * t * t
-            let z = record.spawnPos.z + record.velocity.z * t
-            record.entity.position = SIMD3(x, y, z)
-            return record
+        // Remove expired throw entities (physics handles position)
+        keyData.activeThrows = keyData.activeThrows.filter { record in
+            let alive = now.timeIntervalSince(record.spawnTime) < Double(Self.throwLifetime)
+            if !alive { record.entity.removeFromParent() }
+            return alive
         }
     }
 
@@ -260,21 +259,60 @@ struct PianoKeyboardView: View {
         keyData.floatingBars.append(bar)
     }
 
+    @MainActor
+    private func processMeshUpdates() {
+        guard keyData.worldRoot != nil, !alignment.pendingMeshUpdates.isEmpty else { return }
+        let updates = alignment.pendingMeshUpdates
+        alignment.pendingMeshUpdates.removeAll()
+        for update in updates {
+            let anchor = update.anchor
+            switch update.event {
+            case .added, .updated:
+                Task { @MainActor in
+                    guard let shape = try? await ShapeResource.generateStaticMesh(from: anchor),
+                          let worldRoot = keyData.worldRoot else { return }
+                    let entity: ModelEntity
+                    if let existing = keyData.meshEntities[anchor.id] {
+                        entity = existing
+                    } else {
+                        entity = ModelEntity()
+                        keyData.meshEntities[anchor.id] = entity
+                        worldRoot.addChild(entity)
+                    }
+                    entity.transform = Transform(matrix: anchor.originFromAnchorTransform)
+                    entity.components.set(CollisionComponent(shapes: [shape]))
+                    entity.components.set(PhysicsBodyComponent(shapes: [shape], mass: 0, material: .default, mode: .static))
+                }
+            case .removed:
+                keyData.meshEntities[anchor.id]?.removeFromParent()
+                keyData.meshEntities.removeValue(forKey: anchor.id)
+            @unknown default:
+                break
+            }
+        }
+    }
+
     private func spawnThrow(for note: UInt8, velocity: UInt8, root: Entity, at now: Date) {
-        let speed = Self.throwSpeed * Float(velocity) / 64.0
+        guard let worldRoot = keyData.worldRoot else { return }
+        let speed = Self.throwSpeed * Float(velocity) / 64.0 * kt.throwVelocityFactor
+
         let wS = AlignmentManager.whiteKeySize
         let bS = AlignmentManager.blackKeySize
         let isBlack = AlignmentManager.blackSet.contains(Int(note) % 12)
         let xCenter = AlignmentManager.keyXCenter(for: note)
         let zOffset: Float = isBlack ? -(wS.z - bS.z) / 2 : 0
         let keyTopY: Float = isBlack ? wS.y / 2 + bS.y : wS.y / 2
-        let spawnPos = SIMD3<Float>(xCenter, keyTopY, zOffset)
+        let worldPos = root.convert(position: SIMD3(xCenter, keyTopY, zOffset), to: nil)
 
-        let pitch = Float.random(in: .pi / 6 ... .pi / 2)  // 30°–90° above horizontal
-        let yaw   = Float.random(in: -.pi / 2 ... .pi / 2) // ±90° horizontal spread
-        let vx =  speed * cos(pitch) * sin(yaw)
-        let vy =  speed * sin(pitch)
-        let vz = -speed * cos(pitch) * cos(yaw)  // -Z = away from player
+        let pitchMin = kt.throwPitchMin * .pi / 180
+        let pitchMax = max(kt.throwPitchMax * .pi / 180, pitchMin)
+        let yawRange = kt.throwYawSpread * .pi / 180
+        let pitch = Float.random(in: pitchMin...pitchMax)
+        let yaw   = Float.random(in: -yawRange...yawRange)
+        let lx =  speed * cos(pitch) * sin(yaw)
+        let ly =  speed * sin(pitch)
+        let lz = -speed * cos(pitch) * cos(yaw)
+        let worldVelocity = root.transform.rotation.act(SIMD3(lx, ly, lz)) * kt.scale
 
         let noteName = MIDIManager.noteName(for: note)
         let mesh = MeshResource.generateText(
@@ -291,14 +329,22 @@ struct PianoKeyboardView: View {
         mat.emissiveIntensity = 5.0
         let entity = ModelEntity(mesh: mesh, materials: [mat])
         entity.name = "throw"
-        entity.position = spawnPos
-        root.addChild(entity)
+        entity.position = worldPos
 
-        keyData.activeThrows.append(ThrowRecord(
-            entity: entity,
-            spawnPos: spawnPos,
-            velocity: SIMD3(vx, vy, vz),
-            spawnTime: now
+        let shape = ShapeResource.generateBox(size: SIMD3(0.05, 0.02, 0.004))
+        let bounceMaterial = PhysicsMaterialResource.generate(friction: 0.5, restitution: 0.4)
+        entity.components.set(CollisionComponent(shapes: [shape]))
+        entity.components.set(PhysicsBodyComponent(shapes: [shape], mass: 0.001, material: bounceMaterial, mode: .dynamic))
+        entity.components.set(PhysicsMotionComponent(
+            linearVelocity: worldVelocity,
+            angularVelocity: SIMD3(
+                Float.random(in: -5...5),
+                Float.random(in: -5...5),
+                Float.random(in: -5...5)
+            )
         ))
+
+        worldRoot.addChild(entity)
+        keyData.activeThrows.append(ThrowRecord(entity: entity, spawnTime: now))
     }
 }

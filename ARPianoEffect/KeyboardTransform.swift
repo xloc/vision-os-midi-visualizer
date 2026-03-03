@@ -13,4 +13,10 @@ final class KeyboardTransform {
     var isKeyboardVisible: Bool = (UserDefaults.standard.object(forKey: "kt.isKeyboardVisible") as? Bool) ?? true {
         didSet { UserDefaults.standard.set(isKeyboardVisible, forKey: "kt.isKeyboardVisible") }
     }
+
+    var throwEnabled: Bool = true
+    var throwVelocityFactor: Float = 1.0
+    var throwPitchMin: Float = 60   // degrees above horizontal
+    var throwPitchMax: Float = 70   // degrees above horizontal
+    var throwYawSpread: Float = 20  // ± degrees from straight back
 }

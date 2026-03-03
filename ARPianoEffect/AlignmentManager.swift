@@ -33,6 +33,7 @@ final class AlignmentManager {
     private var countdownTask: Task<Void, Never>?
 
     private var worldProvider: WorldTrackingProvider?
+    var pendingMeshUpdates: [AnchorUpdate<MeshAnchor>] = []
 
     // MARK: - Public actions
 
@@ -64,10 +65,12 @@ final class AlignmentManager {
         guard HandTrackingProvider.isSupported else { return }
         storedKT = kt
         worldProvider = WorldTrackingProvider.isSupported ? WorldTrackingProvider() : nil
+        let sceneReconProvider = SceneReconstructionProvider.isSupported ? SceneReconstructionProvider() : nil
 
         let handProvider = HandTrackingProvider()
         var providers: [any DataProvider] = [handProvider]
         if let wp = worldProvider { providers.append(wp) }
+        if let sp = sceneReconProvider { providers.append(sp) }
 
         let session = ARKitSession()
         do {
@@ -81,6 +84,14 @@ final class AlignmentManager {
             guard let self, let wp = self.worldProvider else { return }
             for await update in wp.anchorUpdates {
                 self.processWorldAnchor(update)
+            }
+        }
+
+        if let sp = sceneReconProvider {
+            Task { @MainActor [weak self] in
+                for await update in sp.anchorUpdates {
+                    self?.pendingMeshUpdates.append(update)
+                }
             }
         }
 

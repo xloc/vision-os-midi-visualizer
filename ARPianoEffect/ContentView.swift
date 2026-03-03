@@ -125,6 +125,32 @@ struct ContentView: View {
 
                 Divider()
 
+                Toggle("Throw notes", isOn: $kt.throwEnabled)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Throw velocity: \(kt.throwVelocityFactor, specifier: "%.1f")×")
+                    Slider(value: $kt.throwVelocityFactor, in: 0.1...5.0)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Pitch: \(Int(kt.throwPitchMin))°–\(Int(kt.throwPitchMax))°")
+                    HStack {
+                        Text("Min").frame(width: 28)
+                        Slider(value: $kt.throwPitchMin, in: 0...kt.throwPitchMax)
+                    }
+                    HStack {
+                        Text("Max").frame(width: 28)
+                        Slider(value: $kt.throwPitchMax, in: kt.throwPitchMin...90)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Yaw spread: ±\(Int(kt.throwYawSpread))°")
+                    Slider(value: $kt.throwYawSpread, in: 0...180)
+                }
+
+                Divider()
+
                 // Note selectors — configure before or during alignment
                 HStack(spacing: 12) {
                     Text("Left pinch:").frame(width: 90, alignment: .leading)
