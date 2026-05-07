@@ -14,6 +14,8 @@ final class KeyboardTransform {
         didSet { UserDefaults.standard.set(isKeyboardVisible, forKey: "kt.isKeyboardVisible") }
     }
 
+    var rainbowBarsEnabled: Bool = false
+
     var throwEnabled: Bool = true
     var throwVelocityFactor: Float = 1.0
     var throwPitchMin: Float = 60   // degrees above horizontal

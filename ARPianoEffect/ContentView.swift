@@ -123,6 +123,8 @@ struct ContentView: View {
 
                 Toggle("Show Keyboard", isOn: $kt.isKeyboardVisible)
 
+                Toggle("Rainbow Bars", isOn: $kt.rainbowBarsEnabled)
+
                 Divider()
 
                 Toggle("Throw notes", isOn: $kt.throwEnabled)

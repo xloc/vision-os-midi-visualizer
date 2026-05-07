@@ -13,6 +13,9 @@ struct PianoKeyboardView: View {
     private static let barDepth: Float = 0.006      // 6 mm slab
     private static let barCornerRadius: Float = 0.002
     private static let worldCeilingY: Float = 2.5   // world-space Y where bars start shrinking from the top
+    private static let octaveColors: [UIColor] = (0...8).map {
+        UIColor(hue: CGFloat($0) / 9, saturation: 1, brightness: 1, alpha: 1)
+    }
 
     // MARK: - Throw constants
 
@@ -231,10 +234,13 @@ struct PianoKeyboardView: View {
         let zOffset: Float = isBlack ? -(wS.z - bS.z) / 2 : 0
         let keyTopY: Float = (isBlack ? wS.y / 2 + bS.y : wS.y / 2) + 0.01  // 1cm above key surface
 
+        let octave = max(0, min(8, Int(note) / 12 - 1))
+        let barColor: UIColor = kt.rainbowBarsEnabled ? Self.octaveColors[octave] : .white
+
         let mesh = MeshResource.generateBox(size: SIMD3(Self.barWidth, 1, Self.barDepth), cornerRadius: Self.barCornerRadius)
         var mat = PhysicallyBasedMaterial()
-        mat.baseColor = .init(tint: .white)
-        mat.emissiveColor = .init(color: .white)
+        mat.baseColor = .init(tint: barColor)
+        mat.emissiveColor = .init(color: barColor)
         mat.emissiveIntensity = 3.0
         let entity = ModelEntity(mesh: mesh, materials: [mat])
         let initialH: Float = 0.001
